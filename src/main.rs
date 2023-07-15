@@ -1,3 +1,4 @@
+use std::fs::read_link;
 use std::path::{Path, PathBuf};
 use std::process::{Command, exit};
 use clap::{Parser, Subcommand};
@@ -34,14 +35,18 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum CliCommand {
-    /// persist the current tempdir
+    /// persist the current tempdir.
+    /// will also persist `t shell` sessions
     Persist {
+        /// the name of the dir to persist (you can also use the top-level name argument or by being in a tempdir)
         name: Option<String>
     },
 
     /// don't show up in the list of tempdirs
     Hidden,
 
+    /// Start a shell in a tempdir, deleting the tempdir when you leave the shell
+    /// (unless you use `t persist`)
     Shell,
 
     /// rename the current or specified tempdir
@@ -53,17 +58,31 @@ enum CliCommand {
     /// delete all tempdirs
     #[clap(alias = "d")]
     Delete {
-        // delete all directories
+        /// delete all non-persistent directories
         #[arg(long, short)]
         all: bool,
 
+        /// the name of the dir to delete (you can also use the top-level name argument or by being in a tempdir)
         name: Option<String>,
     },
 
+    /// info about the current tempdirs
     #[clap(alias = "s")]
     Status,
 }
 
+fn cleanup(tempdirs: &Path) -> Result<()> {
+    for i in std::fs::read_dir(tempdirs).wrap_err(format!("read {tempdirs:?}"))? {
+        let i = i.wrap_err("read direntry")?;
+
+        if i.path().is_symlink() && !read_link(i.path()).wrap_err("read link")?.exists() {
+            eprintln!("cleaning up stale symlink {:?}", i.path());
+            symlink::remove_symlink_auto(i.path()).wrap_err("remove symlink")?;
+        }
+    }
+
+    Ok(())
+}
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -77,6 +96,9 @@ fn main() -> Result<()> {
         std::fs::create_dir_all(&tempdirs)
             .wrap_err(format!("create tempdirs ({tempdirs:?})"))?;
     }
+
+    // first see if there are any stale symlinks (for after boot)
+    cleanup(&tempdirs)?;
 
     let name = args.name
         .clone()
