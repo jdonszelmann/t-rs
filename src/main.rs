@@ -131,7 +131,7 @@ fn main() -> Result<()> {
                 let original_symlink = i.as_path();
                 persist(original_symlink)?;
 
-                Some(tempdirs)
+                Some(i)
             } else if let Some(ref n) = args.name {
                 let original_symlink = tempdirs.join(n);
                 if !original_symlink.exists() {
