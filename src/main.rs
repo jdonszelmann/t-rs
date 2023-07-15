@@ -87,7 +87,14 @@ fn cleanup(tempdirs: &Path) -> Result<()> {
 fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let args: Cli = Cli::parse();
+    let args: Cli = match Cli::try_parse() {
+        Ok(i) => i,
+        Err(e) => {
+            eprintln!("{}", e.render());
+            exit(e.exit_code());
+        }
+    };
+    // let args = Cli::parse();
 
     let home = home::home_dir()
         .wrap_err("couldn't get home directory")?;
