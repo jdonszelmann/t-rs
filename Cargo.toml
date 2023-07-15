@@ -1,11 +1,12 @@
 [package]
 name = "t-rs"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 description = "quickly create and manage temporary folders from the commandline"
 authors = ["Jonathan Dönszelmann <jonabent@gmail.com>"]
 license = "MIT"
 readme = "README.md"
+repository = "https://github.com/jdonszelmann/t-rs"
 
 [[bin]]
 name="t-rs"
