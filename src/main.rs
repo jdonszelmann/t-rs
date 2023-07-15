@@ -9,7 +9,7 @@ use fs_extra::dir::CopyOptions;
 const TEMPDIR_PREFIX: &str = "T-RS-TEMPDIR";
 const TEMPDIRS: &str = "tempdirs";
 
-/// # Usage:
+/// Usage:
 ///
 /// Put the following in your bashrc or zshrc file.
 ///
