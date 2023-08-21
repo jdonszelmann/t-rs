@@ -437,7 +437,7 @@ dependencies = [
 
 [[package]]
 name = "t-rs"
-version = "0.1.12"
+version = "0.2.0"
 dependencies = [
  "clap",
  "color-eyre",

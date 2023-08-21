@@ -1,6 +1,9 @@
+use std::default::Default;
+use std::env::VarError;
 use std::fs::read_link;
 use std::path::{Path, PathBuf};
 use std::process::{Command, exit};
+use std::time::SystemTime;
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::{Context, ContextCompat};
 use color_eyre::Result;
@@ -42,6 +45,16 @@ enum CliCommand {
         name: Option<String>
     },
 
+    /// Create a temporary directory with the most recently downloaded file copied into it.
+    Dl {
+        /// The name of the new temporary directory. Defaults to the name of the download
+        name: Option<String>,
+
+        /// Delete the original in the downloads directory
+        #[arg(long, short)]
+        r#move: bool,
+    },
+
     /// don't show up in the list of tempdirs
     Hidden,
 
@@ -58,7 +71,7 @@ enum CliCommand {
     /// delete all tempdirs
     #[clap(alias = "d")]
     Delete {
-        /// delete all non-persistent directories
+        /// delete all *non-persistent* directories. To delete persistent directories, manually clear the tempdir
         #[arg(long, short)]
         all: bool,
 
@@ -68,6 +81,9 @@ enum CliCommand {
 
     /// info about the current tempdirs
     #[clap(alias = "s")]
+    #[clap(alias = "list")]
+    #[clap(alias = "l")]
+    #[clap(alias = "ls")]
     Status,
 }
 
@@ -288,6 +304,75 @@ fn main() -> Result<()> {
                 None
             }
         }
+        Some(CliCommand::Dl { name, r#move }) => {
+            let mut fallback_dl_dir = home.join("Downloads");
+            if !fallback_dl_dir.exists() {
+                fallback_dl_dir = home.join("dl");
+            }
+            let dl_dir = match std::env::var("XDG_DOWNLOAD_DIR") {
+                Ok(i) => PathBuf::from(i),
+                Err(VarError::NotPresent) => {
+                    fallback_dl_dir
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
+            };
+
+            eprintln!("resolved download directory to {dl_dir:?}");
+
+            let mut max: Option<(SystemTime, PathBuf)> = None;
+
+            for i in std::fs::read_dir(dl_dir)? {
+                let i = i?;
+                let Ok(meta) = i.metadata() else {
+                    eprintln!("couldn't read file metadata of {:?}; skipping", i.path());
+                    continue;
+                };
+
+                if meta.is_file() {
+                    let Ok(created) = meta.created() else {
+                        eprintln!("couldn't read creation time of {:?}; skipping", i.path());
+                        continue;
+                    };
+
+                    if let Some(ref mut max) = max {
+                        if created > max.0 {
+                            *max = (created, i.path());
+                        }
+                    } else {
+                        max = Some((created, i.path()));
+                    }
+                }
+            }
+
+            let Some((_, most_recent_dl)) = max else {
+                eprintln!("no downloads");
+                exit(0);
+            };
+
+            eprintln!("most recently downloaded file: {:?}", most_recent_dl);
+
+            let filename = most_recent_dl.file_stem().expect("download has filename");
+            let name = name.unwrap_or_else(|| filename.to_string_lossy().to_string());
+            let res = create_tempdir(&tempdirs, name.as_ref(), &cwd, pwd.as_deref(), true)?;
+
+            if r#move{
+                fs_extra::move_items(
+                    &[most_recent_dl],
+                    &res,
+                    &CopyOptions::default(),
+                ).wrap_err("move file to tempdir")?;
+            } else {
+                fs_extra::copy_items(
+                    &[most_recent_dl],
+                    &res,
+                    &CopyOptions::default(),
+                ).wrap_err("move file to tempdir")?;
+            }
+
+            Some(res)
+        }
     };
 
     // the path printed here is where we will cd to after
@@ -452,8 +537,8 @@ pub fn delete_all(tempdirs: &Path) -> Result<PathBuf> {
         let i = i.wrap_err("read direntry")?;
         if i.metadata().wrap_err("get direntry metadata")?.is_symlink() {
             symlink::remove_symlink_auto(i.path()).wrap_err(format!("remove symlink {:?}", i.path()))?;
+            eprintln!("deleting {:?}", i.path());
         }
-        eprintln!("deleting {:?}", i.path());
     }
 
 
